@@ -5,6 +5,8 @@ if [ ! -d "$BUILD_DIR" ]; then
 	mkdir build
 fi
 
+mkdir log
+
 cd build
 cp ../makefile .
 cp ../One_box.sh .
