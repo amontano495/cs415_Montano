@@ -3,8 +3,8 @@ CC=mpicc
 CXXFLAGS=-Wall
 LIBS=-lpmi
 # feel free to either add files here (for more compilcated src's), or create more vars, or just manually type them in. Up to you.
-FILE1=../src/PA01.c
-FILE2=../src/PA01-2.c
+FILE1=./src/PA01.c
+FILE2=./src/PA01-2.c
 # uncomment below if/when you have a folder called include that holds potential header files
 #INCLUDES=-I../include
 OUTPUT1=PA01
