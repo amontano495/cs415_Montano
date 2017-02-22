@@ -2,7 +2,6 @@
 
 ## Building and Running Instructions
 To build this project, simply execute the makefile. Like so:
-Example:
 ```bash
 make
 ```
