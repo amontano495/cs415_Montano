@@ -1,11 +1,18 @@
 # PA1: "Ping Pong" by Adam Montano
 
 ## Building and Running Instructions
-To run this project, simply execute the buildscript.sh file. Note: May have to chmod this file.
+To build this project, simply execute the makefile. Like so:
 Example:
 ```bash
-chmodx +x buildscript.sh
-./buildscript.sh
+make
 ```
+This will make the project files. 
 
-This will make and run the project files. Output from each part will be saved in the /log/ directory.
+
+To run this project, use sbatch to run each sbatch file (i.e. One_box.sh, Two_box.sh, Timing.sh). Like so:
+```bash
+sbatch One_box.sh
+sbatch Two_box.sh
+sbatch Timin.sh
+```
+Output from each part will be saved in the /log/ directory.
