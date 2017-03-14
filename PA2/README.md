@@ -33,3 +33,6 @@ sbatch sequential.sh
 ```
 This will perform each of the programs and an image will be saved with a corresponding program.
 Since this is run by another program, `sbatch`, do not change the execution mode using `chmod` at all with them.
+
+## Results
+The images are saved in the build file but data on the run time is saved in the `bin` folder.
