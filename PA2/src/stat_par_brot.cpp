@@ -37,8 +37,8 @@ int real_max = 2;
 int real_min = -2;
 int imag_max = 2;
 int imag_min = -2;
-int disp_width = 10000;
-int disp_height =10000;
+int disp_width = 1000;
+int disp_height =1000;
 float scale_real = (float)(real_max - real_min)/disp_width;
 float scale_imag = (float)(imag_max - real_min)/disp_height;
 

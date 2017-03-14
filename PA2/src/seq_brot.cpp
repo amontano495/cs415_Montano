@@ -36,8 +36,8 @@ int real_max = 2;
 int real_min = -2;
 int imag_max = 2;
 int imag_min = -2;
-int disp_width = 40000;
-int disp_height =40000;
+int disp_width = 1000;
+int disp_height =1000;
 float scale_real = (float)(real_max - real_min)/disp_width;
 float scale_imag = (float)(imag_max - real_min)/disp_height;
 
@@ -77,6 +77,7 @@ if( echelon == lord )
 	c.real = 0.0;
 	c.imag = 0.0;
 
+	//Calculates the mandelbrot pixel by pixel using cal_pixel
 	start = MPI_Wtime();
 	for( abscissa = 0; abscissa < disp_width; abscissa++ )
 	{
@@ -91,6 +92,15 @@ if( echelon == lord )
 	duration = end - start;
 	cout << "Image processing took: \n";
 	cout << duration << endl;
+
+	//Save the image
+	pim_write_black_and_white( "seq_img",
+				disp_width,
+				disp_height,
+				(const unsigned char **) fresco);
+
+
+
 }
 
 
