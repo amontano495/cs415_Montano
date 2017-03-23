@@ -37,8 +37,8 @@ int real_max = 2;
 int real_min = -2;
 int imag_max = 2;
 int imag_min = -2;
-int disp_width = 1000;
-int disp_height =1000;
+int disp_width = 500;
+int disp_height =500;
 float scale_real = (float)(real_max - real_min)/disp_width;
 float scale_imag = (float)(imag_max - real_min)/disp_height;
 
@@ -62,6 +62,12 @@ data_tag = 0;
 result_tag = 2;
 terminator_tag = 3;
 
+//flag to see if there are an odd numbered of processors
+bool oddProcs;
+
+//If there is an odd number of slaves, one will have to do the left over rows
+int remainingRows;
+
 //The fresco is the image we are creating from this process
 //It will have a mandelbrot saved to it
 unsigned char ** fresco;
@@ -75,7 +81,24 @@ for( int i = 0; i < disp_height; i++ )
 MPI_Init(&argc,&argv);
 MPI_Comm_size(MPI_COMM_WORLD, &actorCount);
 MPI_Comm_rank(MPI_COMM_WORLD, &echelon);
-int rowsPerProcess = disp_height / ( actorCount - 1);
+
+int slaves = actorCount - 1;
+
+if( slaves % 2 == 0 )
+{
+	oddProcs = false;
+}
+else
+{
+	oddProcs = true;
+}
+
+int rowsPerProcess = disp_height / slaves;
+
+if( oddProcs )
+{
+	remainingRows = disp_height - (rowsPerProcess * slaves );
+}
 
 
 //Lord process
@@ -93,6 +116,11 @@ if( echelon == lord )
 	//Start sending out rows to vassals
 	for( int actor = 1; actor < actorCount; actor++ )
 	{
+		if( oddProcs && (actor == actorCount - 1) )
+		{
+			row += remainingRows;
+		}
+
 		MPI_Send( &row , 1 , MPI_INT , actor , data_tag , MPI_COMM_WORLD );
 		row += rowsPerProcess;
 	}
@@ -101,7 +129,7 @@ if( echelon == lord )
 	start = MPI_Wtime();
 
 	//Copy the strip the lord received from the vassal into the image
-	for( int i = 0; i < disp_height; i++ )
+	for( int i = 0; i < (rowsPerProcess * slaves); i++ )
 	{
 		MPI_Recv( &strip , disp_width , MPI_UNSIGNED_CHAR , MPI_ANY_SOURCE , MPI_ANY_TAG , MPI_COMM_WORLD , &Stat );
 
