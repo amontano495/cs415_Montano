@@ -7,12 +7,11 @@
 using namespace std;
 
 #define WRITE_FLAGS "w"
-void bubbleSort( int array[] , int size );
-
 
 int main (int argc, char *argv[])
 {
 
+//Mpi variables
 int actorCount;
 int echelon;
 
@@ -21,29 +20,42 @@ double start;
 double end;
 double duration;
 
-//Load balancing data
-//The lord commands the vassals
+//The lord is the only required node
 int lord = 0;
 
 
+//The amount of numbers to sort
 int n_items;
+
+//An iterator through the file
 int i;
 
-int n_buckets = 16;
+//The amount of buckets
+int n_buckets = 2;
+
+//The max interval of the numbers to sort
 int MAX_SIZE = 1000;
+
+//The size of the bucket
 int bucket_size;
 
+//A 2D array where the 2nd dim is each bucket
 int ** buckets;
+
+//An array to hold the numbers to be sorted
 int *array;
 
+//Reading in the file...
 ifstream file;
 file.open( argv[ 1 ] );
 file >> n_items;
 
+//Expand the array to hold the numbers that will be sorted
 array = new int [ n_items ];
 
 bucket_size = MAX_SIZE / n_buckets;
 
+//Initializing the 2D array, -1 means null
 buckets = new int * [ n_buckets ];
 for( int i = 0; i <  n_buckets; i++ )
 {
@@ -54,6 +66,8 @@ for( int i = 0; i <  n_buckets; i++ )
 	}
 }
 
+
+//Filling the array with the numbers from file
 i = 0;
 while( i < n_items )
 {
@@ -78,10 +92,12 @@ if( echelon == lord )
 	int val;
 	for( int i = 0; i < n_items; i++ )
 	{
+		//Places each value from the array into the appropriate bucket
 		bucket_index = ( array[ i ] * n_buckets ) / MAX_SIZE;
 		val = 0;
 		while( placed == false and val < bucket_size )
 		{
+			//This means the current stored value is null and ok to replace
 			if( buckets[ bucket_index ][ val ] == -1 )
 			{
 				buckets[ bucket_index ][ val ] = array[ i ];
@@ -95,6 +111,8 @@ if( echelon == lord )
 	//Sort
 	int temp;
 	int x = 0;
+	//This is just a simple bubble sort but called on each row of the 2D array
+	//In this context the rows are the buckets
 	for( int i = 0; i < n_buckets; i++ )
 	{
 		x = 0;
@@ -118,6 +136,7 @@ if( echelon == lord )
 	}
 
 	//Gather
+	//This merges the data from the buckets back into the array now that everything is sorted
 	k = 0;
 	for( int i = 0; i < n_buckets; i++ )
 	{
@@ -131,10 +150,6 @@ if( echelon == lord )
 		}
 	}
 
-	for( int i = 0; i < n_items; i++ )
-	{
-		//cout << array[ i ] << endl;
-	}
 	end = MPI_Wtime();
 	cout << end - start << endl;
 
@@ -145,27 +160,4 @@ MPI_Finalize();
 
 return 0;
 
-}
-
-void bubbleSort( int array[] , int size ) 
-{
-	int i, temp;
-	for( int i = 0; i < size; i++ )
-	{
-		if( array[ i ] > array[ i + 1 ] && array[ i ] != -1 )
-		{
-			temp = array[ i ];
-			array[ i ] = array[ i + 1 ];
-			array[ i + 1 ] = temp;
-		}
-	}
-
-	for( int i = 0; i < size; i++ )
-	{
-		if( array[ i ] > -1 )
-		{
-			cout << array[ i ] << " ";
-		}
-	}
-	cout << endl;
 }
