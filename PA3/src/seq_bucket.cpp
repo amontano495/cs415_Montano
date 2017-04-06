@@ -4,12 +4,34 @@
 #include <cstdio>
 #include <cstring>
 #include <stdlib.h>
+#include <vector>
+#define MAX_SIZE 1000
+#define ROOT 0
 using namespace std;
 
-#define WRITE_FLAGS "w"
+
+//Global to print out 
+int VERBOSE = false;
+
+//Fills array with random numbers
+void RNG( int arr[] , int number_of_points );
+
+//A simple bubble sort for a vector
+void bubbleSort( vector<int> &arr );
 
 int main (int argc, char *argv[])
 {
+
+int n_items = atoi( argv[ 1 ] );
+int n_buckets = atoi( argv[ 2 ] );
+
+if( argc > 3 ) 
+{
+	if( atoi( argv[ 3 ] ) == 1 )
+	{
+		VERBOSE = true;
+	}
+}
 
 //Mpi variables
 int actorCount;
@@ -18,74 +40,27 @@ int echelon;
 //Time data
 double start;
 double end;
-double duration;
-
-//The lord is the only required node
-int lord = 0;
-
-
-//The amount of numbers to sort
-int n_items;
-
-//An iterator through the file
-int i;
-
-//The amount of buckets
-int n_buckets = 2;
-
-//The max interval of the numbers to sort
-int MAX_SIZE = 1000;
-
-//The size of the bucket
-int bucket_size;
 
 //A 2D array where the 2nd dim is each bucket
-int ** buckets;
+vector<int> buckets[ n_buckets ];
 
 //An array to hold the numbers to be sorted
 int *array;
 
-//Reading in the file...
-ifstream file;
-file.open( argv[ 1 ] );
-file >> n_items;
-
 //Expand the array to hold the numbers that will be sorted
 array = new int [ n_items ];
 
-bucket_size = MAX_SIZE / n_buckets;
-
-//Initializing the 2D array, -1 means null
-buckets = new int * [ n_buckets ];
-for( int i = 0; i <  n_buckets; i++ )
-{
-	buckets[ i ] = new int [ bucket_size ];
-	for( int j = 0; j < bucket_size; j++ )
-	{
-		buckets[ i ][ j ] = -1;
-	}
-}
-
-
-//Filling the array with the numbers from file
-i = 0;
-while( i < n_items )
-{
-	file >> array[ i ];
-	i++;
-}
-
+RNG( array , n_items );
 
 MPI_Init(&argc,&argv);
 MPI_Comm_size(MPI_COMM_WORLD, &actorCount);
 MPI_Comm_rank(MPI_COMM_WORLD, &echelon);
 
 //Lord process
-if( echelon == lord )
+if( echelon == ROOT )
 {
 	start = MPI_Wtime();
 	int bucket_index;
-	int k = 0;
 
 	//Scatter
 	bool placed = false;
@@ -94,60 +69,13 @@ if( echelon == lord )
 	{
 		//Places each value from the array into the appropriate bucket
 		bucket_index = ( array[ i ] * n_buckets ) / MAX_SIZE;
-		val = 0;
-		while( placed == false and val < bucket_size )
-		{
-			//This means the current stored value is null and ok to replace
-			if( buckets[ bucket_index ][ val ] == -1 )
-			{
-				buckets[ bucket_index ][ val ] = array[ i ];
-				placed = true;
-			}
-			val++;
-		}
-		placed = false;
+		buckets[ bucket_index ].push_back( array [ i ] );
 	}
 
-	//Sort
-	int temp;
-	int x = 0;
 	//This is just a simple bubble sort but called on each row of the 2D array
-	//In this context the rows are the buckets
 	for( int i = 0; i < n_buckets; i++ )
 	{
-		x = 0;
-		while( x < bucket_size )
-		{
-			if( buckets[ i ][ x ] > buckets[ i ][ x + 1 ] 
-				and buckets[ i ][ x + 1 ] > -1 
-				and buckets[ i ][ x ] > -1 )
-			{
-				temp = buckets[ i ][ x ];
-				buckets[ i ][ x ] = buckets[ i ][ x + 1 ];
-				buckets[ i ][ x + 1 ] = temp;
-				x = 0;
-			}
-
-			else
-			{
-				x++;
-			}
-		}
-	}
-
-	//Gather
-	//This merges the data from the buckets back into the array now that everything is sorted
-	k = 0;
-	for( int i = 0; i < n_buckets; i++ )
-	{
-		for( int j = 0; j < bucket_size; j++ )
-		{
-			if( buckets[ i ][ j ] > 0 and k < n_items)
-			{
-				array[ k ] = buckets[ i ][ j ];
-				k++;
-			}
-		}
+		bubbleSort( buckets[ i ] );
 	}
 
 	end = MPI_Wtime();
@@ -160,4 +88,39 @@ MPI_Finalize();
 
 return 0;
 
+}
+
+void RNG( int arr[] , int number_of_points )
+{
+	int i;
+	long random_num;
+
+	for( i = 0; i < number_of_points; i++ )
+	{
+		random_num = random();
+		arr[ i ] = ( random_num % MAX_SIZE );
+	}
+}
+
+void bubbleSort( vector<int> &arr )
+{
+	bool swapped = true;
+	int j = 0;
+	int tmp;
+	int length = arr.size();
+	while( swapped )
+	{
+		swapped = false;
+		j++;
+		for( int i = 0; i < (length - j); i++ )
+		{
+			if( arr[ i ] > arr[ i + 1 ] )
+			{
+				tmp = arr[ i ];
+				arr[ i ] = arr[ i + 1 ];
+				arr[ i + 1 ] = tmp;
+				swapped = true;
+			}
+		}
+	}
 }
