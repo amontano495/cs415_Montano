@@ -27,7 +27,7 @@ int main (int argc, char *argv[])
 
 if( argc > 2 )
 {
-	if( atoi( arg[ 2 ] ) == 1 )
+	if( atoi( argv[ 2 ] ) == 1 )
 	{
 		VERBOSE = true;
 	}
@@ -209,8 +209,8 @@ for( int i = 0; i < n_buckets; i++ )
 
 
 //Sort the big bucket and convert to a normal int array
-bubbleSort( bigBucket );
-
+//bubbleSort( bigBucket );
+sort( bigBucket.begin(), bigBucket.end() );
 //Each bucket is now sorted, stop timing
 if( echelon == ROOT )
 {
