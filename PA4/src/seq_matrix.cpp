@@ -30,16 +30,17 @@ int **matA;
 int **matB;
 int **matC;
 
+/*
 //File data
 ifstream fileA;
 ifstream fileB;
 fileA.open(argv[1]);
 fileB.open(argv[2]);
-
+*/
 //Read in the first number, contains matrix dim
-fileA >> N;
-fileB >> N;
-
+//fileA >> N;
+//fileB >> N;
+N = atoi(argv[1]);
 //MPI stuff
 MPI_Init(&argc,&argv);
 MPI_Comm_size(MPI_COMM_WORLD, &actorCount);
@@ -66,8 +67,8 @@ if( echelon == ROOT )
 	{
 		for( int j = 0; j < N; j++ )
 		{
-			fileA >> matA[i][j];
-			fileB >> matB[i][j];
+			matA[i][j] = rand() % 1000;
+			matB[i][j] = rand() % 1000;
 		}
 	}
 
