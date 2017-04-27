@@ -12,8 +12,7 @@ using namespace std;
 
 //allocates a 2D array with contigious memory
 //important for MPI sends and recvs
-template <typename T>
-T** create2DArray(unsigned nrows, unsigned ncols);
+int ** contigAllocate(int rowSize, int colSize);
 
 //Gets the left processor of given processor in the mesh
 int getLeftProc( int rank, int meshSize );
@@ -26,6 +25,27 @@ int getMeshRow( int rank, int meshSize );
 
 //Gets the Col value in mesh
 int getMeshCol( int rank, int meshSize );
+
+//Print out the matrix
+void printMatrix( int **table , int matSize);
+
+//sets given matrix to all 0s
+void initMatrix( int **table, int matSize);
+
+//distributes the submatricies of the large matricies to the mesh
+void partMatrix( int **bigMatA, int **bigMatB, int **smallMatA, int **smallMatB , int rank, int smallMatSize, int procCount, MPI_Status stat);
+
+//shift left function
+void shiftLeft(int **smallMatA, int **buffer, int leftNode, int matSize, MPI_Status stat, MPI_Request req );
+
+//shift up function
+void shiftUp(int **smallMatB, int **buffer, int upNode, int matSize, MPI_Status stat, MPI_Request req );
+
+//multiples two matricies A and B and saves result into C
+void seqMatMult( int **matrixA, int **matrixB, int **matrixC, int matSize );
+
+//converts an array to a matrix
+void convertArrToMat( int *arr, int **matrix, int matSize, int size);
 
 //Global to print out 
 int VERBOSE = false;
@@ -43,16 +63,29 @@ MPI_Request Request;
 double start;
 double end;
 
+//File data
+ifstream fileA;
+ifstream fileB;
+fileA.open(argv[1]);
+fileB.open(argv[2]);
+
 //Matrix data
+int **largeMatA;
+int **largeMatB;
+int **largeMatC;
 int largeN;
 int N;
 int **matA;
 int **matB;
 int **matC;
 
-//Size given by command line
-largeN = atoi(argv[1]);
+int *resultArr;
+int *subResult;
 
+fileA >> largeN;
+fileB >> largeN;
+
+resultArr = new int [largeN*largeN];
 //MPI stuff
 MPI_Init(&argc,&argv);
 MPI_Comm_size(MPI_COMM_WORLD, &actorCount);
@@ -61,69 +94,34 @@ MPI_Comm_rank(MPI_COMM_WORLD, &echelon);
 //Calculates matrix sie for each node
 N = largeN / sqrt(actorCount);
 
+subResult = new int [N*N];
+
 //Allocate memory for matrices
-matA = create2DArray<int>(N,N);
-matB = create2DArray<int>(N,N);
-matC = create2DArray<int>(N,N);
+matA = contigAllocate(N,N);
+matB = contigAllocate(N,N);
+matC = contigAllocate(N,N);
+largeMatA = contigAllocate(largeN,largeN);
+largeMatB = contigAllocate(largeN,largeN);
+largeMatC = contigAllocate(largeN,largeN);
 
-int **tempMat = create2DArray<int>(N,N);
+int **tempMat = contigAllocate(N,N);
 
-//Set matC to all 0s
-for( int i = 0; i < N; i++ )
-{
-	for( int j = 0; j < N; j++ )
-	{
-		matC[i][j] = 0;
-	}
-}
+initMatrix(matC, N);
 
-srand(time(0));
-//Root process
-//Generate random values for matricies
-//sends the matricies to nodes
 if( echelon == ROOT )
 {
-	int a;
-	int b;
-	for( int i = 1; i < actorCount; i++ )
+	for( int i = 0; i < largeN; i++ )
 	{
-		for( int j = 0; j < N; j++ )
+		for( int j = 0; j < largeN; j++ )
 		{
-			for( int k = 0; k < N; k++ )
-			{
-				a = rand() % 10;
-				b = rand() % 10;
-				matA[j][k] = a;
-				matB[j][k] = b;
-			}
-		}
-		MPI_Send(&(matA[0][0]) , N*N, MPI_INT, i, 0, MPI_COMM_WORLD);
-		MPI_Send(&(matB[0][0]) , N*N, MPI_INT, i, 0, MPI_COMM_WORLD);
-	}
-
-	//matrices for root
-	for( int j = 0; j < N; j++ )
-	{
-		for( int k = 0; k < N; k++ )
-		{
-			a = rand() % 10;
-			b = rand() % 10;
-			matA[j][k] = a;
-			matB[j][k] = b;
+			fileA >> largeMatA[i][j];
+			fileB >> largeMatB[i][j];
 		}
 	}
 }
 
-//Recv the matricies
-if( echelon > ROOT )
-{
-	MPI_Recv(&(matA[0][0]) , N*N, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &Stat);
-	MPI_Recv(&(matB[0][0]) , N*N, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &Stat);
-}
-
-
-
-MPI_Barrier(MPI_COMM_WORLD);
+//distribute the file matrix to the mesh
+partMatrix( largeMatA, largeMatB, matA, matB , echelon, N, actorCount, Stat);
 
 
 //Mesh values and data
@@ -140,54 +138,22 @@ MPI_Barrier(MPI_COMM_WORLD);
 //initial swaps
 
 //Start counting
-start = MPI_Wtime();
-MPI_Barrier(MPI_COMM_WORLD);
+if( echelon == ROOT )
+	start = MPI_Wtime();
 
 //left shifts first
-for( int i = 0; i < Row; i++ )
+for( int i = 0; i < Row; i++) 
 {
-	MPI_Isend(&(matA[0][0]), N*N, MPI_INT, leftProc, 0, MPI_COMM_WORLD, &Request);	
-	//recv
-	MPI_Recv(&(tempMat[0][0]), N*N, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &Stat);
-	//wait
-	MPI_Wait(&Request, &Stat);
-
-	//copy data
 	if( Row > 0 )
-	{
-		for( int i = 0; i < N; i++ )
-		{
-			for( int j = 0; j < N; j++ )
-			{
-				matA[i][j] = tempMat[i][j];
-			}
-		}
-	}
-} 
+		shiftLeft( matA, tempMat, leftProc, N, Stat, Request );
+}
 
 MPI_Barrier(MPI_COMM_WORLD);
-
-//up shifts
-for( int i = 0; i < Col; i++ )
+//up shifts now
+for( int i = 0; i < Col; i++) 
 {
-	//send
-	MPI_Isend(&(matB[0][0]), N*N, MPI_INT, upProc, 0, MPI_COMM_WORLD, &Request);
-	//recv
-	MPI_Recv(&(tempMat[0][0]), N*N, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &Stat);
-	//wait
-	MPI_Wait(&Request, &Stat);
-
-	//copy dat
 	if( Col > 0 )
-	{
-		for( int i = 0; i < N; i++ )
-		{
-			for( int j = 0; j < N; j++ )
-			{
-				matB[i][j] = tempMat[i][j];
-			}
-		}
-	}
+		shiftUp( matB, tempMat, upProc, N, Stat, Request );
 }
 
 
@@ -196,57 +162,55 @@ MPI_Barrier(MPI_COMM_WORLD);
 //Now shift submatricies left and up
 for( int multCnt = 0; multCnt < rootP; multCnt++ )
 {
-	//Multiply and save into C
-	for( int i = 0; i < N; i++ )
-	{
-		for( int j = 0; j < N; j++ )
-		{
-			for( int k = 0; k < N; k++ )
-			{
-				matC[i][j] += (matA[i][k] * matB[k][j]);
-			}
-		}
-	}
+
+	seqMatMult(matA, matB, matC, N);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	//Swap left
-	MPI_Isend(&(matA[0][0]), N*N, MPI_INT, leftProc, 0, MPI_COMM_WORLD, &Request);	
-	MPI_Recv(&(tempMat[0][0]), N*N, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &Stat);
-	MPI_Wait(&Request, &Stat);
-	
-	for( int i = 0; i < N; i++ )
-	{
-		for( int j = 0; j < N; j++ )
-		{
-			matA[i][j] = tempMat[i][j];
-		}
-	}
+	shiftLeft( matA, tempMat, leftProc, N, Stat, Request );
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
 
 	//Swap up
-	MPI_Isend(&(matB[0][0]), N*N, MPI_INT, upProc, 0, MPI_COMM_WORLD, &Request);	
-	MPI_Recv(&(tempMat[0][0]), N*N, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &Stat);
-	MPI_Wait(&Request, &Stat);
+	shiftUp( matB, tempMat, upProc, N, Stat, Request );
 
-	for( int i = 0; i < N; i++ )
-	{
-		for( int j = 0; j < N; j++ )
-		{
-			matB[i][j] = tempMat[i][j];
-		}
-	}
 	MPI_Barrier(MPI_COMM_WORLD);
 }
 
 MPI_Barrier(MPI_COMM_WORLD);
-end = MPI_Wtime();
 
-if(echelon == 0)
+if(echelon == ROOT )
+	end = MPI_Wtime();
+
+int k = 0;
+for( int i = 0; i < N; i++ )
 {
-	cout << (end - start) << endl;
+	for( int j = 0; j < N; j++ )
+	{
+		subResult[k] = matC[i][j];
+		k++;
+	}
+}
+
+MPI_Barrier(MPI_COMM_WORLD);
+
+MPI_Gather( subResult, N*N, MPI_INT, resultArr, N*N, MPI_INT, ROOT, MPI_COMM_WORLD );
+
+
+if( echelon == ROOT )
+{
+	convertArrToMat( resultArr, largeMatC, largeN, N);
+
+	cout << "Matrix calculated in " << (end - start) << " seconds " << endl;
+
+	cout << "Contents of matrix A: \n";
+	printMatrix( largeMatA, largeN );
+	cout << "Contents of matrix B: \n";
+	printMatrix( largeMatB, largeN );
+	cout << "Contents of matrix C: \n";
+	printMatrix( largeMatC, largeN );
 }
 
 MPI_Finalize();
@@ -256,12 +220,11 @@ return 0;
 }
 
 //Contiguous allocation of 2D array
-template <typename T>
-T** create2DArray(unsigned nrows, unsigned ncols)
+int** contigAllocate(int rowSize, int colSize)
 {
-	T** ptr = new T*[nrows];
-	T* pool = new T[nrows*ncols];
-	for( unsigned i = 0; i < nrows; ++i, pool += ncols )
+	int** ptr = new int*[rowSize];
+	int* pool = new int[rowSize*colSize];
+	for( int i = 0; i < rowSize; ++i, pool += colSize )
 		ptr[i] = pool;
 	return ptr;
 }
@@ -307,4 +270,183 @@ int getMeshCol( int rank, int meshSize )
 {
 	int col = rank % meshSize;
 	return col;
+}
+
+
+void printMatrix( int **table , int matSize )
+{
+	for( int i = 0; i < matSize; i++ )
+	{
+		for( int j = 0; j < matSize; j++ )
+		{
+			cout << table[i][j] << ' ';
+		}
+		cout << endl;
+	}
+}
+
+
+void initMatrix( int **table, int matSize)
+{
+	for( int i = 0; i < matSize; i++ )
+	{
+		for( int j = 0; j < matSize; j++ )
+		{
+			table[i][j] = 0;
+		}
+	}
+}
+
+void partMatrix( int **bigMatA, int **bigMatB, int **smallMatA, int **smallMatB , int rank, int smallMatSize, int procCount, MPI_Status stat)
+{
+	if( rank == ROOT )
+	{
+		int meshRowCounter = 0;
+		int meshColCounter = 0;
+		int rowOffset = 0;
+		int colOffset = 0;
+
+		meshColCounter++;
+		colOffset += smallMatSize;
+
+		for( int i = 1; i < procCount; i++ )
+		{
+			for( int j = 0; j < smallMatSize; j++ )
+			{
+				for( int k = 0; k < smallMatSize; k++ )
+				{
+					smallMatA[j][k] = bigMatA[j + rowOffset][k + colOffset];
+					smallMatB[j][k] = bigMatB[j + rowOffset][k + colOffset];
+				}
+			}
+
+			meshColCounter++;
+			colOffset += smallMatSize;
+			if( meshColCounter == smallMatSize + 1)
+			{
+				meshRowCounter++;
+				rowOffset += smallMatSize;
+				colOffset = 0;
+				meshColCounter = 0;
+			}
+
+			MPI_Send(&(smallMatA[0][0]) , smallMatSize*smallMatSize, MPI_INT, i, 0, MPI_COMM_WORLD);
+			MPI_Send(&(smallMatB[0][0]) , smallMatSize*smallMatSize, MPI_INT, i, 0, MPI_COMM_WORLD);
+		}
+
+		rowOffset = 0;
+		colOffset = 0;
+		//matrices for root
+		for( int j = 0; j < smallMatSize; j++ )
+		{
+			for( int k = 0; k < smallMatSize; k++ )
+			{
+
+				smallMatA[j][k] = bigMatA[j + rowOffset][k + colOffset];
+				smallMatB[j][k] = bigMatB[j + rowOffset][k + colOffset];
+			}
+		}
+
+	}
+
+	//Recv the matricies
+	if( rank > ROOT )
+	{
+		MPI_Recv(&(smallMatA[0][0]) , smallMatSize*smallMatSize, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &stat);
+		MPI_Recv(&(smallMatB[0][0]) , smallMatSize*smallMatSize, MPI_INT, ROOT, 0, MPI_COMM_WORLD, &stat);
+	}
+}
+
+void shiftLeft(int **smallMatA, int **buffer, int leftNode, int matSize, MPI_Status stat, MPI_Request req )
+{
+	MPI_Isend(&(smallMatA[0][0]), matSize*matSize, MPI_INT, leftNode, 0, MPI_COMM_WORLD, &req);	
+	//recv
+	MPI_Recv(&(buffer[0][0]), matSize*matSize, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &stat);
+	//wait
+	MPI_Wait(&req, &stat);
+	
+	for( int i = 0; i < matSize; i++ )
+	{
+		for( int j = 0; j < matSize; j++ )
+		{
+			smallMatA[i][j] = buffer[i][j];
+		}
+	}
+}
+
+void shiftUp(int **smallMatB, int **buffer, int upNode, int matSize, MPI_Status stat, MPI_Request req )
+{
+	MPI_Isend(&(smallMatB[0][0]), matSize*matSize, MPI_INT, upNode, 0, MPI_COMM_WORLD, &req);	
+	//recv
+	MPI_Recv(&(buffer[0][0]), matSize*matSize, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &stat);
+	//wait
+	MPI_Wait(&req, &stat);
+	
+	for( int i = 0; i < matSize; i++ )
+	{
+		for( int j = 0; j < matSize; j++ )
+		{
+			smallMatB[i][j] = buffer[i][j];
+		}
+	}
+}
+
+void seqMatMult( int **matrixA, int **matrixB, int **matrixC, int matSize )
+{
+	for( int i = 0; i < matSize; i++ )
+	{
+		for( int j = 0; j < matSize; j++ )
+		{
+			for( int k = 0; k < matSize; k++ )
+			{
+				matrixC[i][j] += (matrixA[i][k] * matrixB[k][j]);
+			}
+		}
+	}
+
+}
+
+
+void convertArrToMat( int *arr, int **matrix, int matSize, int size)
+{
+	int rowOffset = 0;
+	int colOffset = 0;
+	int colCounter = 0;
+	int index = 0;
+	int rowIndex = 0;
+	int colIndex = 0;
+
+	for( int i = 0; i < matSize; i++ )
+	{
+		for( int j = 0; j < matSize; j++ )
+		{
+			matrix[rowIndex + rowOffset][colIndex + colOffset] = arr[index];
+			if( colIndex == (size - 1 ) && rowIndex != (size - 1) )
+			{
+				rowIndex++;
+				colIndex = 0;
+			}
+			else if( rowIndex == (size - 1 ) && colIndex == (size - 1) )
+			{
+				rowIndex = 0;
+				colIndex = 0;
+				if( colCounter == size )
+				{
+					colOffset = 0;
+					rowOffset += size;
+					colCounter = 0;
+				}
+				else
+				{
+				colCounter++;
+				colOffset += size;
+				}
+			}
+			else
+			{
+				colIndex++;
+			}
+			index++;
+		}
+	}
 }
